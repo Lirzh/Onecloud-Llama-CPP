@@ -25,6 +25,13 @@ echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}         Onecloud-Llama-CPP 启动脚本         ${NC}"
 echo -e "${BLUE}=============================================${NC}\n"
 
+# 创建并切换到工作目录
+WORK_DIR="/opt/Onecloud-Llama-CPP"
+echo -e "${YELLOW}准备工作目录：${WORK_DIR}${NC}"
+sudo mkdir -p "$WORK_DIR"
+sudo chown -R "$USER:$USER" "$WORK_DIR"
+cd "$WORK_DIR" || { echo -e "${RED}错误：无法创建或访问工作目录${WORK_DIR}${NC}"; exit 1; }
+
 # 1. 环境准备
 echo -e "${YELLOW}【步骤1/4】正在准备运行环境...${NC}"
 total_steps=5
@@ -86,6 +93,8 @@ echo -e "${YELLOW}【步骤3/4】正在下载模型文件...${NC}"
 model_name="Llama-3.2-1B-Instruct-Q2_K_L.gguf"
 model_url="http://hf-mirror.com/unsloth/Llama-3.2-1B-Instruct-GGUF/resolve/main/${model_name}?download=true"
 
+cd "$WORK_DIR" || exit 1  # 确保回到工作目录
+
 if [ -f "$model_name" ]; then
     echo -e "${YELLOW}提示：模型文件已存在，跳过下载${NC}"
 else
@@ -120,10 +129,11 @@ echo -e "  上下文长度：2048\n"
 read -p "是否立即启动服务？[y/N] " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    ./llama-server -m "../$model_name" -c 2048 -ngl 0 --host 0.0.0.0 -port $port
+    cd "$WORK_DIR/llama.cpp/build/bin" || { echo -e "${RED}错误：找不到llama-server可执行文件${NC}"; exit 1; }
+    ./llama-server -m "../../$model_name" -c 2048 -ngl 0 --host 0.0.0.0 -port $port
 else
     echo -e "${YELLOW}服务未启动，可手动执行以下命令启动：${NC}"
-    echo -e "cd $(pwd); ./llama-server -m \"../$model_name\" -c 2048 -ngl 0 --host 0.0.0.0 -port $port"
+    echo -e "cd $WORK_DIR/llama.cpp/build/bin; ./llama-server -m \"../../$model_name\" -c 2048 -ngl 0 --host 0.0.0.0 -port $port"
 fi
 
 echo -e "\n${BLUE}=============================================${NC}"
