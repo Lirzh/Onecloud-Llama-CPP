@@ -19,7 +19,7 @@
 ##### 一起安装：
 
 ```
-libcurl4-openssl-devapt install g++ cmake libcurl4-openssl-dev
+apt install g++ cmake libcurl4-openssl-dev
 ```
 
 ##### 或
