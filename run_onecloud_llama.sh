@@ -1,86 +1,141 @@
 #!/bin/bash
+set -euo pipefail  # 严格模式：遇到错误立即退出，未定义变量报错
 
-# 颜色定义
+# 颜色与样式定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
+YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-RESET='\033[0m'
+NC='\033[0m' # 无颜色
 
-# 工作目录
-WORK_DIR=$(pwd)
-LLAMA_CPP_DIR="$WORK_DIR/llama.cpp"
-MODELS_DIR="$WORK_DIR/models"
-QUANTIZED_MODELS_DIR="$WORK_DIR/quantized_models"
-TOKENIZER_PATH="$WORK_DIR/tokenizer.model"
+# 进度显示函数
+show_progress() {
+    local current=$1
+    local total=$2
+    local percentage=$((current * 100 / total))
+    local bar_length=40
+    local filled_length=$((percentage * bar_length / 100))
+    local bar=$(printf "%0.s#" $(seq 1 $filled_length))
+    local spaces=$(printf "%0.s " $(seq 1 $((bar_length - filled_length))))
+    echo -ne "\r[${bar}${spaces}] ${percentage}%  (${current}/${total})"
+}
 
-# 确保目录存在
-mkdir -p $MODELS_DIR
-mkdir -p $QUANTIZED_MODELS_DIR
+# 主程序开始
+echo -e "${BLUE}=============================================${NC}"
+echo -e "${BLUE}         Onecloud-Llama-CPP 启动脚本         ${NC}"
+echo -e "${BLUE}=============================================${NC}\n"
 
-# 检查参数
-BUILD_TYPE="Release"
-if [ "$1" = "debug" ]; then
-    BUILD_TYPE="Debug"
-    echo -e "${YELLOW}使用调试模式构建${RESET}"
+# 创建并切换到工作目录
+WORK_DIR="/opt/Onecloud-Llama-CPP"
+echo -e "${YELLOW}准备工作目录：${WORK_DIR}${NC}"
+sudo mkdir -p "$WORK_DIR"
+sudo chown -R "$USER:$USER" "$WORK_DIR"
+cd "$WORK_DIR" || { echo -e "${RED}错误：无法创建或访问工作目录${WORK_DIR}${NC}"; exit 1; }
+
+# 1. 环境准备
+echo -e "${YELLOW}【步骤1/4】正在准备运行环境...${NC}"
+total_steps=5
+current_step=1
+
+show_progress $current_step $total_steps
+if ! sudo apt update -y > /dev/null 2>&1; then
+    echo -e "\n${YELLOW}警告：更新软件源失败，继续执行后续步骤${NC}"
+else
+    current_step=$((current_step + 1))
 fi
+show_progress $current_step $total_steps
 
-# 检查是否安装了必要的依赖
-echo -e "${GREEN}检查依赖...${RESET}"
-dependencies=("git" "cmake" "make" "g++" "wget" "unzip" "python3" "pip")
-missing_deps=()
+sudo apt install -y g++ cmake libcurl4-openssl-dev > /dev/null 2>&1 || { echo -e "\n${RED}错误：安装依赖失败${NC}"; exit 1; }
+current_step=$((current_step + 1))
+show_progress $current_step $total_steps
 
-for dep in "${dependencies[@]}"; do
-    if ! command -v $dep &> /dev/null; then
-        missing_deps+=($dep)
+# 检查cmake版本
+cmake_version=$(cmake --version | head -n1 | awk '{print $3}')
+if dpkg --compare-versions "$cmake_version" lt "3.16"; then
+    echo -e "\n${YELLOW}警告：cmake版本过低，可能导致编译失败${NC}"
+    echo -e "${YELLOW}建议安装cmake 3.16+版本${NC}"
+    read -p "是否继续？[y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
     fi
-done
-
-if [ ${#missing_deps[@]} -ne 0 ]; then
-    echo -e "${RED}错误: 缺少以下依赖:${RESET}"
-    for dep in "${missing_deps[@]}"; do
-        echo -e "${RED}- $dep${RESET}"
-    done
-    echo -e "${YELLOW}请先安装这些依赖再继续。${RESET}"
-    exit 1
 fi
+current_step=$((current_step + 1))
+show_progress $current_step $total_steps
 
-# 克隆 llama.cpp 仓库
-echo -e "${GREEN}克隆 llama.cpp 仓库...${RESET}"
-if [ ! -d "$LLAMA_CPP_DIR" ]; then
-    git clone https://github.com/ggerganov/llama.cpp.git $LLAMA_CPP_DIR
-    cd $LLAMA_CPP_DIR
-    git checkout master
-    cd $WORK_DIR
+echo -e "\r${GREEN}【步骤1/4】环境准备完成！${NC}\n"
+
+# 2. 下载并编译Llama.cpp
+echo -e "${YELLOW}【步骤2/4】正在编译Llama.cpp...${NC}"
+current_step=1
+total_steps=3
+
+show_progress $current_step $total_steps
+if [ ! -d "llama.cpp" ]; then
+    git clone https://github.com/ggerganov/llama.cpp.git > /dev/null 2>&1 || { echo -e "\n${RED}错误：克隆仓库失败，请检查网络${NC}"; exit 1; }
 else
-    echo -e "${YELLOW}llama.cpp 仓库已存在，跳过克隆${RESET}"
+    echo -e "\r${YELLOW}提示：llama.cpp已存在，跳过克隆${NC}"
 fi
+current_step=$((current_step + 1))
+show_progress $current_step $total_steps
 
-# 构建 llama.cpp
-echo -e "${GREEN}构建 llama.cpp...${RESET}"
-cd $LLAMA_CPP_DIR
-if [ "$BUILD_TYPE" = "Release" ]; then
-    cmake -B build -DCMAKE_BUILD_TYPE=Release
-    cmake --build build --config Release -j $((`nproc`)) --verbose
+cd llama.cpp || { echo -e "\n${RED}错误：进入llama.cpp目录失败${NC}"; exit 1; }
+mkdir -p build && cd build > /dev/null 2>&1
+cmake .. > /dev/null 2>&1 || { echo -e "\n${RED}错误：cmake配置失败${NC}"; exit 1; }
+current_step=$((current_step + 1))
+show_progress $current_step $total_steps
+
+make -j$(nproc) > /dev/null 2>&1 || { echo -e "\n${RED}错误：编译失败${NC}"; exit 1; }
+echo -e "\r${GREEN}【步骤2/4】Llama.cpp编译完成！${NC}\n"
+
+# 3. 下载模型文件
+echo -e "${YELLOW}【步骤3/4】正在下载模型文件...${NC}"
+model_name="Llama-3.2-1B-Instruct-Q2_K_L.gguf"
+model_url="http://hf-mirror.com/unsloth/Llama-3.2-1B-Instruct-GGUF/resolve/main/${model_name}?download=true"
+
+cd "$WORK_DIR" || exit 1  # 确保回到工作目录
+
+if [ -f "$model_name" ]; then
+    echo -e "${YELLOW}提示：模型文件已存在，跳过下载${NC}"
 else
-    cmake -B build -DCMAKE_BUILD_TYPE=Debug
-    cmake --build build --config Debug -j $((`nproc`)) --verbose
+    # 使用wget带进度条下载
+    wget -O "$model_name" "$model_url" --progress=bar:force 2>&1 || {
+        echo -e "\n${RED}错误：模型下载失败${NC}"
+        echo -e "${YELLOW}备用链接：https://huggingface.co/unsloth/Llama-3.2-1B-Instruct-GGUF${NC}"
+        exit 1
+    }
 fi
-cd $WORK_DIR
+echo -e "${GREEN}【步骤3/4】模型文件准备完成！${NC}\n"
 
-# 下载模型和分词器
-echo -e "${GREEN}下载模型和分词器...${RESET}"
-# 这里应该有下载模型和分词器的代码
-# 由于不清楚具体模型，这部分保持原样
+# 4. 启动服务
+echo -e "${YELLOW}【步骤4/4】正在启动服务...${NC}"
+port=8080
 
-# 量化模型
-echo -e "${GREEN}量化模型...${RESET}"
-# 这里应该有量化模型的代码
-# 由于不清楚具体模型，这部分保持原样
+# 检查端口是否被占用
+if lsof -i:$port > /dev/null 2>&1; then
+    echo -e "${YELLOW}警告：端口${port}已被占用${NC}"
+    read -p "请输入新的端口号 [1024-65535]: " port
+    if ! [[ $port =~ ^[0-9]+$ ]] || [ $port -lt 1024 ] || [ $port -gt 65535 ]; then
+        echo -e "${RED}错误：无效的端口号${NC}"
+        exit 1
+    fi
+fi
 
-# 运行推理
-echo -e "${GREEN}运行推理...${RESET}"
-# 这里应该有运行推理的代码
-# 由于不清楚具体模型，这部分保持原样
+echo -e "${BLUE}启动参数：${NC}"
+echo -e "  模型文件：${model_name}"
+echo -e "  端口：${port}"
+echo -e "  上下文长度：2048\n"
 
-echo -e "${GREEN}OneCloud-Llama-CPP 设置完成！${RESET}"
+read -p "是否立即启动服务？[y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    cd "$WORK_DIR/llama.cpp/build/bin" || { echo -e "${RED}错误：找不到llama-server可执行文件${NC}"; exit 1; }
+    ./llama-server -m "../../$model_name" -c 2048 -ngl 0 --host 0.0.0.0 -port $port
+else
+    echo -e "${YELLOW}服务未启动，可手动执行以下命令启动：${NC}"
+    echo -e "cd $WORK_DIR/llama.cpp/build/bin; ./llama-server -m \"../../$model_name\" -c 2048 -ngl 0 --host 0.0.0.0 -port $port"
+fi
+
+echo -e "\n${BLUE}=============================================${NC}"
+echo -e "${GREEN}操作完成！如有问题请查看项目文档${NC}"
+echo -e "${BLUE}=============================================${NC}"
