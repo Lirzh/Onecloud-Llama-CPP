@@ -12,6 +12,20 @@
 
 ## 使用方法
 
+### 一键启动：
+
+```
+curl -fsSL https://raw.githubusercontent.com/Lirzh/Onecloud-Llama-CPP/refs/heads/main/run_onecloud_llama.sh | bash
+```
+
+或使用 bgithub.xyz 镜像：
+
+```
+curl -fsSL https://raw.bgithub.xyz/Lirzh/Onecloud-Llama-CPP/refs/heads/main/run_onecloud_llama.sh | bash
+```
+
+### 手动安装：
+
 #### 环境准备：
 
 你需要准备 g++ 和 cmake ，以及 g++ 的 curl 库：
@@ -19,10 +33,17 @@
 ##### 一起安装：
 
 ```
+apt update
 apt install g++ cmake libcurl4-openssl-dev
 ```
 
 ##### 或
+
+##### 更新软件包列表:
+
+```
+apt update
+```
 
 ##### g++安装：
 

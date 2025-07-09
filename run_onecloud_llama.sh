@@ -31,8 +31,11 @@ total_steps=5
 current_step=1
 
 show_progress $current_step $total_steps
-sudo apt update -y > /dev/null 2>&1 || { echo -e "\n${RED}错误：更新软件源失败，请检查网络${NC}"; exit 1; }
-current_step=$((current_step + 1))
+if ! sudo apt update -y > /dev/null 2>&1; then
+    echo -e "\n${YELLOW}警告：更新软件源失败，继续执行后续步骤${NC}"
+else
+    current_step=$((current_step + 1))
+fi
 show_progress $current_step $total_steps
 
 sudo apt install -y g++ cmake libcurl4-openssl-dev > /dev/null 2>&1 || { echo -e "\n${RED}错误：安装依赖失败${NC}"; exit 1; }
